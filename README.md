@@ -85,7 +85,3 @@ Set `HARNESS_SEED` to reproduce a specific run:
 ```bash
 HARNESS_SEED=12345 python3 test_trust.py
 ```
-
-## License
-
-Add your license of choice here.
