@@ -9,7 +9,7 @@ class O6Candidate:
     Attributes:
         id: Unique identifier for the candidate (int or str).
         confidence_e: Embedding confidence score [0.0, 1.0 nominally].
-        confidence_v: Visual confidence score (formerly V_siglip) [0.0, 1.0 nominally].
+        confidence_v: Visual confidence score [0.0, 1.0 nominally].
         samples: Number of observed samples backing this candidate's confidence.
     """
     id: object
