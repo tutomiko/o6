@@ -1,15 +1,10 @@
 import math
-from enum import IntEnum
 
 from .candidate import O6Candidate
 
 VALID_PROFILES = ("precise", "balanced", "permissive")
 
-
-class O6MatchStatus(IntEnum):
-    INVALID = -1   # rejected / invalid input
-    UNCERTAIN = 0   # query elsewhere
-    MATCH = 1       # matched
+UNCERTAIN = -1
 
 
 class O6Matcher:
@@ -45,13 +40,18 @@ class O6Matcher:
         Runs the matcher over a pool of candidates.
 
         Returns:
-            A tuple (O6MatchStatus, index) where index is the position of the
-            matched candidate in the *original* input list, or -1 if rejected
-            or uncertain (query elsewhere).
+            An int: the index of the matched candidate in the *original*
+            input list, or UNCERTAIN (-1) if no candidate is confidently
+            matched (query elsewhere).
+
+        Raises:
+            ValueError: if candidates is invalid (not a list, empty, or no
+                candidate in it is usable after sanitization).
         """
         if not candidates or not isinstance(candidates, list):
-            return (O6MatchStatus.INVALID, -1)
+            raise ValueError("candidates must be a non-empty list.")
 
+        original_pool_size = len(candidates)
         valid_candidates = []
 
         # --- 1. Robust Data Sanitization ---
@@ -61,22 +61,27 @@ class O6Matcher:
                 continue
 
             try:
+                # Reject Booleans masquerading as valid numbers
+                if isinstance(confidence_e, bool) or isinstance(confidence_v, bool) or isinstance(samples, bool):
+                    continue
+
                 confidence_e = float(confidence_e)
                 confidence_v = float(confidence_v)
 
                 if not (math.isfinite(confidence_e) and math.isfinite(confidence_v)):
                     continue
 
+                # Domain Bounding: Confidence must be a valid probability
+                if not (0.0 <= confidence_e <= 1.0) or not (0.0 <= confidence_v <= 1.0):
+                    continue
+
                 samples = 0 if samples is None else max(0, int(samples))
 
-                # --- 2. Base Mathematical Foundations (Stable across all profiles) ---
+                # --- 2. Base Mathematical Foundations ---
                 epsilon = 1e-6
-                # Harmonic mean guarantees severe punishment for scores approaching 0
                 base_harmonic = (2 * confidence_e * confidence_v) / (confidence_e + confidence_v + epsilon)
-                # Asymptotic limit approaching 1.0
                 base_maturity = samples / (samples + 1.0)
 
-                # Apply dynamic exponentiation based on profile strictness
                 signal_power = base_harmonic ** self.sig_exp
                 maturity_power = base_maturity ** self.mat_exp
 
@@ -92,7 +97,10 @@ class O6Matcher:
 
         pool_size = len(valid_candidates)
         if pool_size == 0:
-            return (O6MatchStatus.INVALID, -1)
+            raise ValueError("No usable candidates remained after sanitization.")
+
+        # --- 2.5 Trust Factor (Zero-Trust Integrity Penalty) ---
+        trust_factor = pool_size / original_pool_size
 
         # --- 3. Deterministic Sorting & Statistics ---
         valid_candidates.sort(key=lambda x: (-x["Score"], str(x["id"])))
@@ -103,12 +111,13 @@ class O6Matcher:
         variance = sum((c["Score"] - pool_mean) ** 2 for c in valid_candidates) / pool_size
         sigma = math.sqrt(variance)
 
-        # --- 4. The Absolute Asymptotic Anchor ---
-        if top_score <= self.anchor:
-            return (O6MatchStatus.UNCERTAIN, -1)
+        # --- 4. The Absolute Asymptotic Anchor (Adjusted for Trust) ---
+        # The perceived maturity of the score decays linearly with corrupted data
+        if (top_score * trust_factor) <= self.anchor:
+            return UNCERTAIN
 
         if pool_size == 1:
-            return (O6MatchStatus.MATCH, top_cand["index"])
+            return top_cand["index"]
 
         # --- 5. Dynamic Tiering & Relative Dominance ---
         top_tier = [c for c in valid_candidates if (top_score - c["Score"]) <= sigma]
@@ -119,15 +128,15 @@ class O6Matcher:
 
         margin = top_tier_avg - next_tier_score
 
-        # Margin requirement scales with the noise (pool_mean), scaled by the profile
-        margin_req = pool_mean * self.margin_multiplier
+        # Margin requirement scales with noise, profile, AND the inverse of trust
+        margin_req = (pool_mean * self.margin_multiplier) / trust_factor
 
         if margin < margin_req:
-            return (O6MatchStatus.UNCERTAIN, -1)
+            return UNCERTAIN
 
         # --- 6. The Clear Winner ---
-        return (O6MatchStatus.MATCH, top_cand["index"])
-
+        return top_cand["index"]
+        
     @staticmethod
     def _extract_fields(c):
         """
