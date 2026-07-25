@@ -2,7 +2,7 @@ import argparse
 import os
 import random
 
-from o6 import O6Matcher, O6MatchStatus
+from o6 import O6Matcher
 
 from vector import VECTORS
 
@@ -65,44 +65,41 @@ def run_harness(profile):
         scenario_breakdown[scenario_type]["total"] += 1
 
         try:
-            result = matcher.match(candidates)
+            try:
+                winner_index = matcher.match(candidates)
+                raised = False
+            except ValueError:
+                # An invalid/unusable pool is treated as "Reject/Elsewhere",
+                # same as an explicit UNCERTAIN result.
+                winner_index = -1
+                raised = True
 
-            if not isinstance(result, tuple) or len(result) != 2:
-                schema_violations += 1
-                failed_count += 1
-                continue
-
-            status, winner_index = result
-            if not isinstance(status, O6MatchStatus):
-                schema_violations += 1
-                failed_count += 1
-                continue
-
-            if status == O6MatchStatus.MATCH:
-                # Winner index must point at a real candidate with a valid id
-                valid_index = (
-                    isinstance(winner_index, int)
-                    and isinstance(candidates, list)
-                    and 0 <= winner_index < len(candidates)
-                    and isinstance(candidates[winner_index], dict)
-                    and isinstance(candidates[winner_index].get("id"), (int, str))
-                )
-                if not valid_index:
+            if not raised:
+                if not isinstance(winner_index, int):
                     schema_violations += 1
                     failed_count += 1
                     continue
-            else:
+
                 if winner_index != -1:
-                    schema_violations += 1
-                    failed_count += 1
-                    continue
+                    # Winner index must point at a real candidate with a valid id
+                    valid_index = (
+                        isinstance(candidates, list)
+                        and 0 <= winner_index < len(candidates)
+                        and isinstance(candidates[winner_index], dict)
+                        and isinstance(candidates[winner_index].get("id"), (int, str))
+                    )
+                    if not valid_index:
+                        schema_violations += 1
+                        failed_count += 1
+                        continue
 
-            actual_status = "Match Confirmed" if status == O6MatchStatus.MATCH else "Reject/Elsewhere"
+            is_match = (not raised) and winner_index != -1
+            actual_status = "Match Confirmed" if is_match else "Reject/Elsewhere"
 
-            if status in (O6MatchStatus.UNCERTAIN, O6MatchStatus.INVALID):
+            if not is_match:
                 fallthrough_count += 1
 
-            actual_winner_id = candidates[winner_index]["id"] if status == O6MatchStatus.MATCH else None
+            actual_winner_id = candidates[winner_index]["id"] if is_match else None
 
             if is_positive_case:
                 if actual_status == "Match Confirmed":
