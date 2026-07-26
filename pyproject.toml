@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "o6"
-version = "9.0.0"
-description = ""
+version = "1.0.0"
+description = "Open-World Class Index"
 authors = [{name="Tuomas Kontiainen", email="tuomas.Kontiainen@gmail.com"}]
 readme = "README.md"
 requires-python = ">=3.9"
