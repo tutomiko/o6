@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "o6"
 version = "1.0.0"
-description = "Open-World Class Index"
+description = "Dilutive Open-World Cluster Matching implementation"
 authors = [{name="Tuomas Kontiainen", email="tuomas.Kontiainen@gmail.com"}]
 readme = "README.md"
 requires-python = ">=3.9"
